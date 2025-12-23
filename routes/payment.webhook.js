@@ -1,21 +1,46 @@
 import express from 'express';
 import Stripe from 'stripe';
-import Payment from '../models/Payment.model.js';
 import Application from '../models/Application.model.js';
+import Payment from '../models/Payment.model.js';
 import Tuition from '../models/Tuition.model.js';
 
 const router = express.Router();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_key');
+
+// Initialize Stripe lazily
+let stripe;
+
+const getStripe = () => {
+  if (!stripe) {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) {
+      console.warn('⚠️  STRIPE_SECRET_KEY not found in environment variables');
+    }
+    stripe = new Stripe(stripeKey || 'sk_test_placeholder');
+  }
+  return stripe;
+};
 
 // Stripe webhook handler
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const stripeInstance = getStripe();
+  if (!stripeInstance) {
+    console.error('❌ Stripe is not configured');
+    return res.status(500).json({ error: 'Stripe is not configured' });
+  }
+
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    if (!webhookSecret) {
+      console.warn('⚠️  STRIPE_WEBHOOK_SECRET not found. Webhook signature verification skipped.');
+      // In development, you might want to parse the event without verification
+      event = JSON.parse(req.body.toString());
+    } else {
+      event = stripeInstance.webhooks.constructEvent(req.body, sig, webhookSecret);
+    }
   } catch (err) {
     console.error('Webhook signature verification failed:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -58,7 +83,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
           // Update tuition
           const tuition = await Tuition.findById(application.tuitionId);
           if (tuition) {
-            tuition.status = 'active';
+            tuition.status = 'approved';
             tuition.approvedTutorId = application.tutorId;
             await tuition.save();
 

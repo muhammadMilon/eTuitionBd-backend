@@ -1,16 +1,33 @@
 import express from 'express';
 import Stripe from 'stripe';
-import Payment from '../models/Payment.model.js';
-import Application from '../models/Application.model.js';
-import Tuition from '../models/Tuition.model.js';
 import { verifyFirebaseToken, verifyRole } from '../middleware/auth.middleware.js';
+import Application from '../models/Application.model.js';
+import Payment from '../models/Payment.model.js';
 
 const router = express.Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_key');
+// Initialize Stripe lazily to ensure env vars are loaded
+let stripe;
+
+const getStripe = () => {
+  if (!stripe) {
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) {
+      console.warn('⚠️  STRIPE_SECRET_KEY not found in environment variables');
+    }
+    stripe = new Stripe(stripeKey || 'sk_test_placeholder');
+  }
+  return stripe;
+};
 
 // Create payment intent (student only)
 router.post('/create-payment-intent', verifyFirebaseToken, verifyRole('student'), async (req, res) => {
+  const stripeInstance = getStripe();
+  
+  if (!stripeInstance) {
+    return res.status(500).json({ message: 'Stripe is not configured. Please check STRIPE_SECRET_KEY in environment variables.' });
+  }
+
   try {
     const { applicationId } = req.body;
 
@@ -40,17 +57,24 @@ router.post('/create-payment-intent', verifyFirebaseToken, verifyRole('student')
       return res.status(400).json({ message: 'Application is not pending' });
     }
 
-    const amount = application.expectedSalary * 100; // Convert to cents/paisa (BDT)
+    // Stripe doesn't support BDT, so we'll use USD
+    // Convert BDT to USD (approximate rate: 1 USD = 110 BDT)
+    // You can update this rate or fetch it from an API
+    const USD_TO_BDT_RATE = 110;
+    const amountInUSD = application.expectedSalary / USD_TO_BDT_RATE;
+    const amount = Math.round(amountInUSD * 100); // Convert to cents
 
     // Create payment intent with Stripe
-    const paymentIntent = await stripe.paymentIntents.create({
+    const paymentIntent = await stripeInstance.paymentIntents.create({
       amount: amount,
-      currency: 'bdt',
+      currency: 'usd', // Stripe doesn't support BDT, using USD
+      payment_method_types: ['card'],
       metadata: {
         applicationId: applicationId.toString(),
         tuitionId: tuition._id.toString(),
         tutorId: application.tutorId._id.toString(),
         studentId: req.userId.toString(),
+        amountInBDT: application.expectedSalary.toString(), // Store original BDT amount
       },
       description: `Payment for ${tuition.title} - Tutor: ${application.tutorId.name}`,
     });
@@ -58,7 +82,9 @@ router.post('/create-payment-intent', verifyFirebaseToken, verifyRole('student')
     res.json({
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
-      amount: application.expectedSalary,
+      amount: application.expectedSalary, // BDT amount for display
+      amountInUSD: amountInUSD, // USD amount for reference
+      currency: 'BDT', // Display currency
     });
   } catch (error) {
     console.error('Create payment intent error:', error);
@@ -68,6 +94,12 @@ router.post('/create-payment-intent', verifyFirebaseToken, verifyRole('student')
 
 // Confirm payment (webhook or manual confirmation)
 router.post('/confirm-payment', verifyFirebaseToken, verifyRole('student'), async (req, res) => {
+  const stripeInstance = getStripe();
+
+  if (!stripeInstance) {
+    return res.status(500).json({ message: 'Stripe is not configured. Please check STRIPE_SECRET_KEY in environment variables.' });
+  }
+
   try {
     const { paymentIntentId, applicationId } = req.body;
 
@@ -76,7 +108,7 @@ router.post('/confirm-payment', verifyFirebaseToken, verifyRole('student'), asyn
     }
 
     // Retrieve payment intent from Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const paymentIntent = await stripeInstance.paymentIntents.retrieve(paymentIntentId);
 
     if (paymentIntent.status !== 'succeeded') {
       return res.status(400).json({ message: 'Payment not completed' });
@@ -98,13 +130,18 @@ router.post('/confirm-payment', verifyFirebaseToken, verifyRole('student'), asyn
     let payment = await Payment.findOne({ stripePaymentIntentId: paymentIntentId });
 
     if (!payment) {
-      // Create payment record
+      // Get the original BDT amount from metadata (if available) or use application amount
+      const amountInBDT = paymentIntent.metadata?.amountInBDT 
+        ? parseFloat(paymentIntent.metadata.amountInBDT) 
+        : application.expectedSalary;
+
+      // Create payment record (store in BDT)
       payment = new Payment({
         studentId: paymentIntent.metadata.studentId,
         tutorId: paymentIntent.metadata.tutorId,
         tuitionId: paymentIntent.metadata.tuitionId,
         applicationId: applicationId,
-        amount: application.expectedSalary,
+        amount: amountInBDT, // Store in BDT
         currency: 'BDT',
         stripePaymentIntentId: paymentIntentId,
         stripeChargeId: paymentIntent.latest_charge || '',
@@ -124,7 +161,7 @@ router.post('/confirm-payment', verifyFirebaseToken, verifyRole('student'), asyn
 
     // Update tuition
     const tuition = application.tuitionId;
-    tuition.status = 'active';
+    tuition.status = 'approved';
     tuition.approvedTutorId = application.tutorId._id;
     await tuition.save();
 

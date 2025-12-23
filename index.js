@@ -1,16 +1,16 @@
-import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import express from 'express';
 import mongoose from 'mongoose';
 
 // Import routes
-import authRoutes from './routes/auth.routes.js';
-import userRoutes from './routes/user.routes.js';
-import tuitionRoutes from './routes/tuition.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 import applicationRoutes from './routes/application.routes.js';
+import authRoutes from './routes/auth.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
 import paymentWebhook from './routes/payment.webhook.js';
-import adminRoutes from './routes/admin.routes.js';
+import tuitionRoutes from './routes/tuition.routes.js';
+import userRoutes from './routes/user.routes.js';
 
 // Load environment variables
 dotenv.config();
@@ -30,13 +30,23 @@ app.use(express.urlencoded({ extended: true }));
 // Database connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/etuitionbd';
 
+console.log('🔄 Attempting to connect to MongoDB...');
+console.log('📍 Connection URI:', MONGODB_URI.replace(/\/\/.*@/, '//***:***@')); // Hide credentials if any
+
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
-    console.log('✅ Connected to MongoDB');
+    console.log('✅ Connected to MongoDB successfully!');
+    console.log('📊 Database:', mongoose.connection.db.databaseName);
   })
   .catch((error) => {
-    console.error('❌ MongoDB connection error:', error);
+    console.error('❌ MongoDB connection error:', error.message);
+    console.error('💡 Troubleshooting tips:');
+    console.error('   1. Make sure MongoDB service is running');
+    console.error('   2. Check MONGODB_URI in .env file');
+    console.error('   3. For local MongoDB: mongodb://localhost:27017/etuitionbd');
+    console.error('   4. For MongoDB Atlas: mongodb+srv://username:password@cluster.mongodb.net/etuitionbd');
+    process.exit(1); // Exit if DB connection fails
   });
 
 // Routes

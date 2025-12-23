@@ -19,11 +19,20 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    password: {
+      type: String,
+      default: '',
+      select: false, // Don't return password by default
+    },
     photoUrl: {
       type: String,
       default: '',
     },
     phone: {
+      type: String,
+      default: '',
+    },
+    address: {
       type: String,
       default: '',
     },
