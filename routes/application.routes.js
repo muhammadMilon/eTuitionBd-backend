@@ -1,7 +1,8 @@
 import express from 'express';
+import { verifyFirebaseToken, verifyRole } from '../middleware/auth.middleware.js';
 import Application from '../models/Application.model.js';
 import Tuition from '../models/Tuition.model.js';
-import { verifyFirebaseToken, verifyRole } from '../middleware/auth.middleware.js';
+import { createNotification } from '../utils/notification.util.js';
 
 const router = express.Router();
 
@@ -58,6 +59,16 @@ router.post('/apply/:tuitionId', verifyFirebaseToken, verifyRole('tutor'), async
 
     await application.populate('tutorId', 'name email photoUrl qualifications experience');
     await application.populate('tuitionId', 'title subject class location');
+
+    // Notify student about new application
+    await createNotification({
+      recipient: tuition.studentId,
+      sender: req.userId,
+      type: 'application',
+      title: 'New Application Received',
+      message: `${application.tutorId.name} has applied for your ${tuition.subject} tuition.`,
+      relatedId: application._id
+    });
 
     res.status(201).json({
       message: 'Application submitted successfully',
@@ -246,6 +257,16 @@ router.post('/:id/reject', verifyFirebaseToken, verifyRole('student'), async (re
 
     application.status = 'rejected';
     await application.save();
+
+    // Notify tutor about rejection
+    await createNotification({
+      recipient: application.tutorId,
+      sender: req.userId,
+      type: 'application',
+      title: 'Application Update',
+      message: `Your application for the ${tuition.subject} tuition has been declined.`,
+      relatedId: application._id
+    });
 
     res.json({ message: 'Application rejected', application });
   } catch (error) {

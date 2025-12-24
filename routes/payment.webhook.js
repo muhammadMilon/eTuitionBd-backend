@@ -83,7 +83,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
           // Update tuition
           const tuition = await Tuition.findById(application.tuitionId);
           if (tuition) {
-            tuition.status = 'approved';
+            tuition.status = 'closed';
             tuition.approvedTutorId = application.tutorId;
             await tuition.save();
 

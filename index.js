@@ -7,8 +7,13 @@ import mongoose from 'mongoose';
 import adminRoutes from './routes/admin.routes.js';
 import applicationRoutes from './routes/application.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import contactRoutes from './routes/contact.routes.js';
+import messageRoutes from './routes/message.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
 import paymentWebhook from './routes/payment.webhook.js';
+import reviewRoutes from './routes/review.routes.js';
+import scheduleRoutes from './routes/schedule.routes.js';
 import tuitionRoutes from './routes/tuition.routes.js';
 import userRoutes from './routes/user.routes.js';
 
@@ -60,6 +65,11 @@ app.use('/api/tuitions', tuitionRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/schedules', scheduleRoutes);
+app.use('/api/contact', contactRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

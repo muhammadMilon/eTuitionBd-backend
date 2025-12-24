@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { verifyFirebaseToken, verifyRole } from '../middleware/auth.middleware.js';
 import Application from '../models/Application.model.js';
 import Payment from '../models/Payment.model.js';
+import { createNotification } from '../utils/notification.util.js';
 
 const router = express.Router();
 
@@ -161,7 +162,7 @@ router.post('/confirm-payment', verifyFirebaseToken, verifyRole('student'), asyn
 
     // Update tuition
     const tuition = application.tuitionId;
-    tuition.status = 'approved';
+    tuition.status = 'closed';
     tuition.approvedTutorId = application.tutorId._id;
     await tuition.save();
 
@@ -176,6 +177,23 @@ router.post('/confirm-payment', verifyFirebaseToken, verifyRole('student'), asyn
         status: 'closed',
       }
     );
+
+    // Notify both parties
+    await createNotification({
+      recipient: payment.studentId,
+      type: 'payment',
+      title: 'Payment Successful',
+      message: `Your payment of ৳${payment.amount} for ${tuition.subject} tuition was successful.`,
+      relatedId: payment._id
+    });
+
+    await createNotification({
+      recipient: payment.tutorId,
+      type: 'payment',
+      title: 'New Tuition Hiring',
+      message: `Congratulations! A student has paid for your services for the ${tuition.subject} tuition.`,
+      relatedId: payment._id
+    });
 
     res.json({
       message: 'Payment confirmed and application approved',
@@ -228,6 +246,23 @@ router.get('/tutor/revenue', verifyFirebaseToken, verifyRole('tutor'), async (re
   } catch (error) {
     console.error('Get revenue history error:', error);
     res.status(500).json({ message: 'Failed to fetch revenue history', error: error.message });
+  }
+});
+
+// Get all payments (admin)
+router.get('/admin/all', verifyFirebaseToken, verifyRole('admin'), async (req, res) => {
+  try {
+    const payments = await Payment.find({})
+      .populate('studentId', 'name email photoUrl')
+      .populate('tutorId', 'name email photoUrl')
+      .populate('tuitionId', 'title subject class')
+      .populate('applicationId')
+      .sort({ transactionDate: -1 });
+
+    res.json({ payments });
+  } catch (error) {
+    console.error('Get all payments error:', error);
+    res.status(500).json({ message: 'Failed to fetch all payments', error: error.message });
   }
 });
 

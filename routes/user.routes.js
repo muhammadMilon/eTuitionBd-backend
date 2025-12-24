@@ -1,6 +1,6 @@
 import express from 'express';
-import User from '../models/User.model.js';
 import { verifyFirebaseToken } from '../middleware/auth.middleware.js';
+import User from '../models/User.model.js';
 
 const router = express.Router();
 
@@ -36,11 +36,25 @@ router.get('/tutors', async (req, res) => {
 // Get tutor by ID (public)
 router.get('/tutors/:id', async (req, res) => {
   try {
-    const tutor = await User.findById(req.params.id)
-      .select('name email photoUrl qualifications experience bio subjects createdAt')
-      .populate('subjects');
+    const { id } = req.params;
+    let tutor;
+
+    // Try finding by MongoDB ID first if it's a valid ObjectId
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      tutor = await User.findById(id)
+        .select('name email photoUrl qualifications experience bio subjects createdAt phone role')
+        .populate('subjects');
+    }
+
+    // If not found by ID or not a valid ObjectId, try finding by uid
+    if (!tutor) {
+      tutor = await User.findOne({ uid: id })
+        .select('name email photoUrl qualifications experience bio subjects createdAt phone role')
+        .populate('subjects');
+    }
 
     if (!tutor || tutor.role !== 'tutor') {
+      console.log(`Tutor not found with ID/UID: ${id}`);
       return res.status(404).json({ message: 'Tutor not found' });
     }
 
@@ -87,6 +101,71 @@ router.put('/profile', verifyFirebaseToken, async (req, res) => {
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ message: 'Update failed', error: error.message });
+  }
+});
+
+// Toggle bookmark for tutor or tuition
+router.post('/bookmarks/toggle', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { targetId, targetType } = req.body; // targetType: 'tutor' or 'tuition'
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (targetType === 'tutor') {
+      const index = user.bookmarkedTutors.indexOf(targetId);
+      if (index > -1) {
+        user.bookmarkedTutors.splice(index, 1);
+        await user.save();
+        return res.json({ message: 'Tutor removed from bookmarks', isBookmarked: false });
+      } else {
+        user.bookmarkedTutors.push(targetId);
+        await user.save();
+        return res.json({ message: 'Tutor added to bookmarks', isBookmarked: true });
+      }
+    } else if (targetType === 'tuition') {
+      const index = user.bookmarkedTuitions.indexOf(targetId);
+      if (index > -1) {
+        user.bookmarkedTuitions.splice(index, 1);
+        await user.save();
+        return res.json({ message: 'Tuition removed from bookmarks', isBookmarked: false });
+      } else {
+        user.bookmarkedTuitions.push(targetId);
+        await user.save();
+        return res.json({ message: 'Tuition added to bookmarks', isBookmarked: true });
+      }
+    } else {
+      return res.status(400).json({ message: 'Invalid target type' });
+    }
+  } catch (error) {
+    console.error('Toggle bookmark error:', error);
+    res.status(500).json({ message: 'Failed to toggle bookmark', error: error.message });
+  }
+});
+
+// Get all bookmarks for the current user
+router.get('/bookmarks/all', verifyFirebaseToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId)
+      .populate('bookmarkedTutors', 'name email photoUrl qualifications subjects')
+      .populate({
+        path: 'bookmarkedTuitions',
+        populate: { path: 'studentId', select: 'name' }
+      });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({
+      tutors: user.bookmarkedTutors,
+      tuitions: user.bookmarkedTuitions
+    });
+  } catch (error) {
+    console.error('Get bookmarks error:', error);
+    res.status(500).json({ message: 'Failed to fetch bookmarks', error: error.message });
   }
 });
 

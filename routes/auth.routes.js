@@ -10,6 +10,7 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   try {
     const { uid, email, name, role, photoUrl, phone, password, address } = req.body;
+    console.log('Registering user with photoUrl:', photoUrl);
 
     // uid is optional for fallback registration; generate one if missing
     const finalUid = uid || randomUUID();

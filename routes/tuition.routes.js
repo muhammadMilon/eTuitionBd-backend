@@ -1,6 +1,6 @@
 import express from 'express';
+import { optionalAuth, verifyFirebaseToken, verifyRole } from '../middleware/auth.middleware.js';
 import Tuition from '../models/Tuition.model.js';
-import { verifyFirebaseToken, optionalAuth, verifyRole } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -136,10 +136,15 @@ router.get('/:id', optionalAuth, async (req, res) => {
     }
 
     // Check if user can view this tuition
+    const isOwner = req.userId && tuition.studentId._id.toString() === req.userId.toString();
+    const isHiredTutor = req.userId && tuition.approvedTutorId && tuition.approvedTutorId._id.toString() === req.userId.toString();
+    const isAdmin = req.userRole === 'admin';
+
     if (
       tuition.status !== 'approved' &&
-      req.userRole !== 'admin' &&
-      (!req.userId || tuition.studentId._id.toString() !== req.userId.toString())
+      !isAdmin &&
+      !isOwner &&
+      !isHiredTutor
     ) {
       return res.status(403).json({ message: 'Access denied' });
     }

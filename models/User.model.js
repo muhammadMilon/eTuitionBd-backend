@@ -66,6 +66,18 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    bookmarkedTutors: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
+    bookmarkedTuitions: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Tuition',
+      },
+    ],
   },
   {
     timestamps: true,
