@@ -23,7 +23,26 @@ dotenv.config();
 const app = express();
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'https://etuitionbd-by-milon.web.app',
+  'https://etuitionbd-by-milon.firebaseapp.com'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
 
 // Stripe webhook needs raw body for signature verification - mount before JSON parser
 app.use('/api/payments', paymentWebhook);
@@ -87,7 +106,11 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+  });
+}
+
+export default app;
 
